@@ -1,0 +1,25 @@
+services:
+  db:
+    image: postgres:17
+    container_name: ai-vocab-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ai_vocab
+      POSTGRES_USER: ai_vocab
+      POSTGRES_PASSWORD: ai_vocab_dev_password
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - ai_vocab_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_vocab -d ai_vocab"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ai_vocab_postgres_data:

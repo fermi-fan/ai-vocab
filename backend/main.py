@@ -1,66 +1,95 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, status
 
+from ai_service import generate_entry_with_ai
+from schemas import (
+    EntryCreate,
+    EntryDeleteResponse,
+    EntryListResponse,
+    EntryResponse,
+    EntryUpdate,
+)
+from entry_store import (
+    create_entry_record,
+    delete_entry_record,
+    get_entry_record,
+    list_entry_records,
+    update_entry_record,
+)
 
 app = FastAPI()
-
-entries = []
-
-
-
-class EntryCreate(BaseModel):
-    content: str
-    context: str | None = None
-
 
 
 @app.get("/")
 def read_root():
-    return {"message": "AI Vocabulary API is running!"}
+    return {"message": "AI Vocabulary Assistant API is running"}
 
-@app.post("/entries/")
+
+@app.post("/entries", response_model=EntryResponse, status_code=status.HTTP_201_CREATED)
 def create_entry(entry_in: EntryCreate):
-    content = entry_in.content.strip()
-
-    if not content:
-        raise HTTPException(status_code=400, detail="Content cannot be empty.")
-
-    new_entry = {
-        "id": len(entries) + 1,
-        "content": content,
-        "entry_type": "word",
-        "chinese_meaning": "这里是模拟AI生成的中文意思",
-        "explanation": "当前还没有接入真实 AI，先用 mock 结果跑通接口。",
-        "part_of_speech": "unknown",
-        "familiarity_level": 0,
-    }
-
-    entries.append(new_entry)
+    content = entry_in.content
+    ai_result = generate_entry_with_ai(content, entry_in.context)
+    new_entry = create_entry_record(content, ai_result)
 
     return new_entry
 
-@app.get("/entries/")
+
+@app.get("/entries", response_model=EntryListResponse)
 def get_entries():
-    return {
-        "total": len(entries),
-        "items": entries,
-    }
+    return list_entry_records()
 
-@app.get("/entries/{entry_id}")
+
+@app.get("/entries/{entry_id}", response_model=EntryResponse)
 def get_entry(entry_id: int):
-    for entry in entries:
-        if entry["id"] == entry_id:
-            return entry
+    entry = get_entry_record(entry_id)
 
-    raise HTTPException(status_code=404, detail="Entry not found.")    
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
 
-@app.delete("/entries/{entry_id}")
-def delete_entry(entry_id :int):
-    for index, entry in enumerate(entries):
-        if entry.get("id") == entry_id:
-            deleted_entry = entries.pop(index)
+    return entry
 
-            return {
-                "message": "Entry deleted successfully.",
-                "deleted": deleted_entry,
-                }
+@app.patch(
+    "/entries/{entry_id}",
+    response_model=EntryResponse,
+)
+def update_entry(
+    entry_id: int,
+    entry_in: EntryUpdate,
+):
+    update_data = entry_in.model_dump(
+        exclude_unset=True,
+        exclude_none=True,
+    )
+
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No update fields provided",
+        )
+
+    updated_entry = update_entry_record(
+        entry_id,
+        update_data,
+    )
+
+    if updated_entry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entry not found",
+        )
+
+    return updated_entry
+
+
+
+
+@app.delete("/entries/{entry_id}", response_model=EntryDeleteResponse)
+def delete_entry(entry_id: int):
+    deleted_entry = delete_entry_record(entry_id)
+
+    if deleted_entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    return {
+        "message": "Entry deleted successfully",
+        "deleted": deleted_entry,
+    }

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import StrEnum
 
 
@@ -53,6 +53,8 @@ class EntryUpdate(BaseModel):
     )
 
 class EntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     content: str
     entry_type: EntryType

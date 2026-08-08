@@ -1,6 +1,15 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
+from sqlalchemy.orm import Session
 
 from ai_service import generate_entry_with_ai
+from database import get_db
+from entry_repository import (
+    create_entry_record,
+    delete_entry_record,
+    get_entry_record,
+    list_entry_records,
+    update_entry_record,
+)
 from schemas import (
     EntryCreate,
     EntryDeleteResponse,
@@ -8,44 +17,79 @@ from schemas import (
     EntryResponse,
     EntryUpdate,
 )
-from entry_store import (
-    create_entry_record,
-    delete_entry_record,
-    get_entry_record,
-    list_entry_records,
-    update_entry_record,
-)
+
 
 app = FastAPI()
 
 
 @app.get("/")
 def read_root():
-    return {"message": "AI Vocabulary Assistant API is running"}
+    return {
+        "message": "AI Vocabulary Assistant API is running"
+    }
 
 
-@app.post("/entries", response_model=EntryResponse, status_code=status.HTTP_201_CREATED)
-def create_entry(entry_in: EntryCreate):
+@app.post(
+    "/entries",
+    response_model=EntryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_entry(
+    entry_in: EntryCreate,
+    db: Session = Depends(get_db),
+):
     content = entry_in.content
-    ai_result = generate_entry_with_ai(content, entry_in.context)
-    new_entry = create_entry_record(content, ai_result)
+
+    ai_result = generate_entry_with_ai(
+        content,
+        entry_in.context,
+    )
+
+    new_entry = create_entry_record(
+        db,
+        content,
+        ai_result,
+    )
 
     return new_entry
 
 
-@app.get("/entries", response_model=EntryListResponse)
-def get_entries():
-    return list_entry_records()
+@app.get(
+    "/entries",
+    response_model=EntryListResponse,
+)
+def get_entries(
+    db: Session = Depends(get_db),
+):
+    entries = list_entry_records(db)
+
+    return {
+        "total": len(entries),
+        "items": entries,
+    }
 
 
-@app.get("/entries/{entry_id}", response_model=EntryResponse)
-def get_entry(entry_id: int):
-    entry = get_entry_record(entry_id)
+@app.get(
+    "/entries/{entry_id}",
+    response_model=EntryResponse,
+)
+def get_entry(
+    entry_id: int,
+    db: Session = Depends(get_db),
+):
+    entry = get_entry_record(
+        db,
+        entry_id,
+    )
 
     if entry is None:
-        raise HTTPException(status_code=404, detail="Entry not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entry not found",
+        )
 
     return entry
+
 
 @app.patch(
     "/entries/{entry_id}",
@@ -54,6 +98,7 @@ def get_entry(entry_id: int):
 def update_entry(
     entry_id: int,
     entry_in: EntryUpdate,
+    db: Session = Depends(get_db),
 ):
     update_data = entry_in.model_dump(
         exclude_unset=True,
@@ -67,6 +112,7 @@ def update_entry(
         )
 
     updated_entry = update_entry_record(
+        db,
         entry_id,
         update_data,
     )
@@ -80,14 +126,24 @@ def update_entry(
     return updated_entry
 
 
-
-
-@app.delete("/entries/{entry_id}", response_model=EntryDeleteResponse)
-def delete_entry(entry_id: int):
-    deleted_entry = delete_entry_record(entry_id)
+@app.delete(
+    "/entries/{entry_id}",
+    response_model=EntryDeleteResponse,
+)
+def delete_entry(
+    entry_id: int,
+    db: Session = Depends(get_db),
+):
+    deleted_entry = delete_entry_record(
+        db,
+        entry_id,
+    )
 
     if deleted_entry is None:
-        raise HTTPException(status_code=404, detail="Entry not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entry not found",
+        )
 
     return {
         "message": "Entry deleted successfully",
